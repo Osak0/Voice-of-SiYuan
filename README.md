@@ -49,6 +49,15 @@ python -m venv venv1
 pip install -r requirements.txt
 ```
 
+5. Configure environment variables (optional):
+```bash
+cp .env.example .env
+# Edit .env and set a strong SECRET_KEY for production
+# You can generate one using: python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+**Note**: For development/testing, the application will use a default (insecure) secret key. For production, you **must** set a strong SECRET_KEY in the `.env` file.
+
 ## Usage
 
 ### Running the Server

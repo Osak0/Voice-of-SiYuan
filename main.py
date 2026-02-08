@@ -2,13 +2,14 @@ from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
 from jose import JWTError, jwt
+from decouple import config
 import uvicorn
 
 # Configuration
-SECRET_KEY = "your-secret-key-here-change-in-production"
+SECRET_KEY = config("SECRET_KEY", default="your-secret-key-here-change-in-production-INSECURE-DEFAULT")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -27,6 +28,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 users_db = {}
 posts_db = []
 comments_db = []
+next_post_id = 1
+next_comment_id = 1
 
 # Models
 class User(BaseModel):
@@ -97,9 +100,9 @@ def authenticate_user(username: str, password: str):
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -179,13 +182,16 @@ async def create_post(
     post: PostCreate,
     current_user: User = Depends(get_current_active_user)
 ):
+    global next_post_id
     new_post = Post(
-        id=len(posts_db) + 1,
+        id=next_post_id,
         title=post.title,
         content=post.content,
-        author=current_user.username
+        author=current_user.username,
+        created_at=datetime.now(timezone.utc)
     )
-    posts_db.append(new_post.dict())
+    posts_db.append(new_post.model_dump())
+    next_post_id += 1
     return new_post
 
 @app.get("/posts", response_model=List[Post])
@@ -217,7 +223,7 @@ async def update_post(
                 )
             posts_db[i]["title"] = post_update.title
             posts_db[i]["content"] = post_update.content
-            posts_db[i]["updated_at"] = datetime.now()
+            posts_db[i]["updated_at"] = datetime.now(timezone.utc)
             return posts_db[i]
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -249,6 +255,7 @@ async def create_comment(
     comment: CommentCreate,
     current_user: User = Depends(get_current_active_user)
 ):
+    global next_comment_id
     # Check if post exists
     post_exists = any(post["id"] == post_id for post in posts_db)
     if not post_exists:
@@ -258,12 +265,14 @@ async def create_comment(
         )
     
     new_comment = Comment(
-        id=len(comments_db) + 1,
+        id=next_comment_id,
         post_id=post_id,
         content=comment.content,
-        author=current_user.username
+        author=current_user.username,
+        created_at=datetime.now(timezone.utc)
     )
-    comments_db.append(new_comment.dict())
+    comments_db.append(new_comment.model_dump())
+    next_comment_id += 1
     return new_comment
 
 @app.get("/posts/{post_id}/comments", response_model=List[Comment])
